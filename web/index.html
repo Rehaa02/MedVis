@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClinAI PACS - Medical Image Diagnosis & Triage Orchestrator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Global Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>ClinAI Orchestrator</h1>
+          <span class="sub-brand">AI-Based Medical Image Diagnosis & Triage Platform</span>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="badge-group">
+          <span class="status-pill status-fda" title="FDA SaMD Good Machine Learning Practice Principle 8 Compliant">
+            <span class="dot pulse-green"></span> FDA SaMD GMLP
+          </span>
+          <span class="status-pill status-hipaa" title="DICOM PS 3.15 Annex E Application Level Confidentiality Profile">
+            <span class="dot pulse-blue"></span> DICOM PS 3.15 De-ID
+          </span>
+          <span class="status-pill status-accel" id="accelBadge">
+            <span class="dot pulse-purple"></span> Acceleration: MPS
+          </span>
+        </div>
+
+        <div class="header-actions">
+          <button id="btnSeedDemo" class="btn btn-primary" title="Synthesize and ingest 3 clinical demo studies">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+            Seed Demo Studies
+          </button>
+          <label class="btn btn-secondary file-upload-btn" title="Upload DICOM study (.dcm)">
+            <input type="file" id="dicomFileInput" multiple accept=".dcm">
+            <span>Upload DICOM</span>
+          </label>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <div class="main-layout">
+      <!-- Left Panel: Dynamic Prioritized Worklist -->
+      <aside class="panel worklist-panel">
+        <div class="panel-header">
+          <div class="worklist-title-row">
+            <h2>Clinical Triage Worklist</h2>
+            <button id="btnRefreshWorklist" class="btn-icon-only" title="Refresh Worklist">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+          </div>
+          <div class="triage-metrics-bar">
+            <div class="metric-chip stat-chip" id="chipStatCount">STAT: 0</div>
+            <div class="metric-chip urgent-chip" id="chipUrgentCount">Urgent: 0</div>
+            <div class="metric-chip routine-chip" id="chipRoutineCount">Routine: 0</div>
+          </div>
+          <div class="filter-tabs">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="STAT">STAT Priority</button>
+            <button class="filter-btn" data-filter="PENDING">Pending Review</button>
+          </div>
+        </div>
+
+        <div class="worklist-container" id="worklistContainer">
+          <div class="empty-state">Loading clinical studies...</div>
+        </div>
+      </aside>
+
+      <!-- Center Panel: Interactive PACS DICOM Viewer -->
+      <main class="panel viewer-panel">
+        <div class="viewer-toolbar">
+          <div class="study-meta-brief" id="studyMetaBrief">
+            <span class="patient-name">Select a study from the worklist</span>
+            <span class="patient-id" id="patientIdBrief"></span>
+          </div>
+
+          <div class="viewport-tools">
+            <div class="tool-group">
+              <label>Preset:</label>
+              <select id="windowPresetSelect" class="select-preset">
+                <option value="soft">Soft Tissue (W400/L40)</option>
+                <option value="lung">Lung Window (W1500/L-600)</option>
+                <option value="bone">Bone (W2000/L300)</option>
+                <option value="brain">Brain (W80/L40)</option>
+                <option value="default" selected>DICOM Native</option>
+              </select>
+            </div>
+
+            <div class="tool-toggles">
+              <button id="toggleSegmentation" class="toggle-btn active" title="Toggle 3D SwinUNETR Segmentation Overlay">
+                3D Organs
+              </button>
+              <button id="toggleBBoxes" class="toggle-btn active" title="Toggle Acute Pathology Bounding Boxes">
+                Lesions
+              </button>
+              <button id="btnInvert" class="toggle-btn" title="Invert Grayscale">
+                Invert
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="viewport-canvas-wrapper" id="viewportWrapper">
+          <canvas id="dicomCanvas"></canvas>
+          <div id="viewportOverlayHud" class="viewport-hud">
+            <div class="hud-tl" id="hudTopLeft">DICOM PS 3.15 Sanitized</div>
+            <div class="hud-tr" id="hudTopRight">MONAI SwinUNETR</div>
+            <div class="hud-bl" id="hudBottomLeft">W: - L: -</div>
+            <div class="hud-br" id="hudBottomRight">Slice: 1 / 1</div>
+          </div>
+        </div>
+
+        <!-- Multi-slice Navigation Slider -->
+        <div class="slice-navigator" id="sliceNavContainer">
+          <span class="slice-label" id="sliceIndicator">Slice: 1/1</span>
+          <input type="range" id="sliceSlider" min="0" max="0" value="0" step="1">
+        </div>
+
+        <!-- 3D Organ Volumetric Measurement Strip -->
+        <div class="organ-metrics-strip" id="organMetricsStrip">
+          <span class="strip-title">SwinUNETR Multi-Organ Volumetrics:</span>
+          <div class="organ-chips-container" id="organChipsContainer">
+            <span class="empty-chips">Select a 3D study to inspect segmented organ volumes</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right Panel: AI Reporting & FDA GMLP Oversight Cockpit -->
+      <aside class="panel reporting-panel">
+        <div class="tabs-header">
+          <button class="tab-nav active" data-tab="tab-report">AI Radiology Draft</button>
+          <button class="tab-nav" data-tab="tab-gmlp">FDA GMLP Review</button>
+          <button class="tab-nav" data-tab="tab-security">Adversarial Defense</button>
+        </div>
+
+        <!-- Tab 1: AI Report & Hallucination Mitigation -->
+        <div class="tab-content active" id="tab-report">
+          <div class="triage-status-banner" id="triageBanner">
+            <div class="banner-urgency" id="bannerUrgency">STAT TRIAGE ALERT</div>
+            <div class="banner-time" id="bannerTime">Turnaround: 0.12s</div>
+          </div>
+
+          <div class="report-section">
+            <div class="section-title">
+              <h3>Clinical Indication & Technique</h3>
+            </div>
+            <div class="section-content" id="reportIndicationText">Select a study to view draft report.</div>
+          </div>
+
+          <div class="report-section">
+            <div class="section-title">
+              <h3>Findings (Interactive Hallucination Audit)</h3>
+              <span class="legend-pill">
+                <span class="dot-sm green"></span> Grounded
+                <span class="dot-sm amber"></span> Moderate
+                <span class="dot-sm red"></span> ReXTrust Alert
+              </span>
+            </div>
+            <div class="section-content findings-text" id="reportFindingsText">
+              Findings drafted by BioMistral / Clinical LLM will appear here with token-level predictive entropy.
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="section-title">
+              <h3>Impression</h3>
+            </div>
+            <div class="section-content impression-text" id="reportImpressionText"></div>
+          </div>
+
+          <!-- Hallucination Mitigation Summary -->
+          <div class="hallucination-card" id="hallucinationSummaryCard">
+            <h4>Hallucination Guard Telemetry</h4>
+            <div class="hallucination-grid">
+              <div class="h-stat">
+                <span class="h-label">ReXTrust Mean Entropy</span>
+                <span class="h-value" id="valMeanEntropy">0.00 bits</span>
+              </div>
+              <div class="h-stat">
+                <span class="h-label">RadFlag Consistency</span>
+                <span class="h-value" id="valConsistency">0%</span>
+              </div>
+              <div class="h-stat">
+                <span class="h-label">DEAR Anatomical Grounding</span>
+                <span class="h-value" id="valDear">PASSED</span>
+              </div>
+              <div class="h-stat">
+                <span class="h-label">Overall Hallucination Risk</span>
+                <span class="h-value" id="valRiskScore">0.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: FDA Good Machine Learning Practice Review -->
+        <div class="tab-content" id="tab-gmlp">
+          <div class="gmlp-card">
+            <div class="gmlp-header">
+              <span class="gmlp-icon">⚖️</span>
+              <div>
+                <h4>FDA SaMD Principle 8: Human-in-the-Loop</h4>
+                <p>Verify or modify AI-generated report before electronic PACS signing.</p>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Attending Radiologist ID:</label>
+              <input type="text" id="radIdInput" value="RAD_DR_ALEXANDER_MD" class="input-text">
+            </div>
+
+            <div class="form-group">
+              <label>Final Report Editor (Real-Time Edit Distance):</label>
+              <textarea id="radReportEditor" rows="8" class="textarea-editor"></textarea>
+            </div>
+
+            <div class="levenshtein-counter">
+              <div class="stat-pill">Levenshtein Distance: <span id="valLevDist">0 chars</span></div>
+              <div class="stat-pill">Edit Ratio: <span id="valEditRatio">0.0%</span></div>
+            </div>
+
+            <div class="gmlp-actions">
+              <button id="btnAcceptReport" class="btn btn-success">
+                ✓ Accept AI Draft
+              </button>
+              <button id="btnModifyReport" class="btn btn-warning">
+                ✎ Sign Modified Report
+              </button>
+              <button id="btnRejectReport" class="btn btn-danger">
+                ✗ Reject Finding
+              </button>
+            </div>
+
+            <div class="audit-history-box" id="auditHistoryBox">
+              <h5>Audit Trail Records (21 CFR Part 11)</h5>
+              <div id="auditLogList" class="audit-list">No audit events submitted for this study yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Adversarial Cybersecurity Defenses -->
+        <div class="tab-content" id="tab-security">
+          <div class="security-card">
+            <h4>Adversarial Gradient Attack & Squeezing Testbed</h4>
+            <p>Inject white-box FGSM gradient perturbations ($x_{adv} = x + \epsilon \cdot \text{sign}(\nabla_x J)$) and evaluate Feature Squeezing & Spatial Gaussian defense.</p>
+
+            <div class="form-group">
+              <label>Perturbation Epsilon ($\epsilon$): <span id="epsVal">0.05</span></label>
+              <input type="range" id="epsRange" min="0.01" max="0.20" step="0.01" value="0.05">
+            </div>
+
+            <button id="btnRunAdversarial" class="btn btn-accent">
+              ⚡ Execute FGSM Attack & Evaluate Defense
+            </button>
+
+            <div class="adversarial-results-box" id="advResultsBox" style="display: none;">
+              <div class="adv-stat-row">
+                <span class="adv-label">Clean Confidence:</span>
+                <span class="adv-val" id="advCleanConf">94.2%</span>
+              </div>
+              <div class="adv-stat-row">
+                <span class="adv-label">Adversarial Confidence (Under Attack):</span>
+                <span class="adv-val text-red" id="advAttackedConf">12.1%</span>
+              </div>
+              <div class="adv-stat-row">
+                <span class="adv-label">Feature Squeezed (Defended):</span>
+                <span class="adv-val text-green" id="advDefendedConf">91.8%</span>
+              </div>
+              <div class="adv-stat-row">
+                <span class="adv-label">Defense Recovery Efficacy:</span>
+                <span class="adv-val text-cyan" id="advRecoveryPct">97.4%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="toastNotification" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
