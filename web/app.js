@@ -23,11 +23,11 @@ const chipStatCount = document.getElementById('chipStatCount');
 const chipUrgentCount = document.getElementById('chipUrgentCount');
 const chipRoutineCount = document.getElementById('chipRoutineCount');
 const btnRefreshWorklist = document.getElementById('btnRefreshWorklist');
-const btnSeedDemo = document.getElementById('btnSeedDemo');
 const dicomFileInput = document.getElementById('dicomFileInput');
 
 const dicomCanvas = document.getElementById('dicomCanvas');
 const ctx = dicomCanvas.getContext('2d');
+const viewerLoading = document.getElementById('viewerLoading');
 const studyMetaBrief = document.getElementById('studyMetaBrief');
 const patientIdBrief = document.getElementById('patientIdBrief');
 const sliceSlider = document.getElementById('sliceSlider');
@@ -80,7 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function setupEventListeners() {
   btnRefreshWorklist.addEventListener('click', loadWorklist);
-  btnSeedDemo.addEventListener('click', seedDemoStudies);
   dicomFileInput.addEventListener('change', handleFileUpload);
 
   sliceSlider.addEventListener('input', (e) => {
@@ -151,7 +150,10 @@ async function checkSystemHealth() {
     const res = await fetch('/api/v1/health');
     const data = await res.json();
     const accelBadge = document.getElementById('accelBadge');
-    accelBadge.innerHTML = `<span class="dot pulse-purple"></span> Acceleration: ${data.device.toUpperCase()}`;
+    accelBadge.replaceChildren();
+    const dot = document.createElement('span');
+    dot.className = 'dot pulse-blue';
+    accelBadge.append(dot, ` Acceleration: ${data.device.toUpperCase()}`);
   } catch (err) {
     console.warn("Health check error:", err);
   }
@@ -159,8 +161,12 @@ async function checkSystemHealth() {
 
 // Worklist Loader
 async function loadWorklist() {
+  worklistContainer.setAttribute('aria-busy', 'true');
+  if (state.studies.length === 0) renderWorklistSkeleton();
+
   try {
     const res = await fetch('/api/v1/triage/worklist');
+    if (!res.ok) throw new Error(`Worklist request failed (${res.status})`);
     const data = await res.json();
     state.studies = data.worklist || [];
 
@@ -175,8 +181,19 @@ async function loadWorklist() {
       selectStudy(state.studies[0].study_instance_uid);
     }
   } catch (err) {
-    worklistContainer.innerHTML = `<div class="empty-state">Unable to connect to triage service.</div>`;
+    worklistContainer.innerHTML = '<div class="empty-state">Unable to connect to the triage service. Try Refresh again.</div>';
+  } finally {
+    worklistContainer.setAttribute('aria-busy', 'false');
   }
+}
+
+function renderWorklistSkeleton() {
+  worklistContainer.innerHTML = `
+    <div class="loading-state" aria-live="polite" aria-label="Loading clinical studies">
+      <div class="skeleton-row"><span class="skeleton-block short"></span><span class="skeleton-block"></span></div>
+      <div class="skeleton-row"><span class="skeleton-block medium"></span><span class="skeleton-block"></span></div>
+      <div class="skeleton-row"><span class="skeleton-block short"></span><span class="skeleton-block"></span></div>
+    </div>`;
 }
 
 function renderWorklist() {
@@ -188,13 +205,13 @@ function renderWorklist() {
   });
 
   if (filtered.length === 0) {
-    worklistContainer.innerHTML = `<div class="empty-state">No studies found in worklist.<br><br>Click <b>Seed Demo Studies</b> above to load test DICOM studies.</div>`;
+    worklistContainer.innerHTML = `<div class="empty-state">No studies found in the current view.<br><br>Upload a DICOM study to begin.</div>`;
     return;
   }
 
   filtered.forEach(study => {
     const card = document.createElement('div');
-    card.className = `worklist-card ${study.triage_category === 'STAT' ? 'stat-border' : ''} ${state.selectedStudyId === study.study_instance_uid ? 'active' : ''}`;
+    card.className = `worklist-card ${state.selectedStudyId === study.study_instance_uid ? 'active' : ''}`;
     
     let tagClass = 'tag-routine';
     if (study.triage_category === 'STAT') tagClass = 'tag-stat';
@@ -202,12 +219,12 @@ function renderWorklist() {
 
     card.innerHTML = `
       <div class="card-top">
-        <span class="triage-tag ${tagClass}">${study.triage_category} &bull; &lt;30s</span>
+      <span class="triage-tag ${tagClass}">${study.triage_category} / under 30s</span>
         <span class="card-score">Score: ${(study.urgency_score * 100).toFixed(0)}%</span>
       </div>
       <div class="card-patient">${study.pseudo_patient_id}</div>
       <div class="card-meta">
-        <span>${study.modality} &bull; ${study.slice_count} slice(s)</span>
+        <span>${study.modality} / ${study.slice_count} slice(s)</span>
         <span>${study.time_to_triage_seconds}s triage</span>
       </div>
       <div class="card-finding">${study.top_findings.slice(0, 2).join(', ')}</div>
@@ -288,6 +305,7 @@ function renderOrganChips(organVolumes) {
 function renderCurrentSlice() {
   if (!state.selectedStudyId) return;
 
+  viewerLoading.hidden = false;
   sliceIndicator.textContent = `Slice: ${state.currentSliceIndex + 1}/${state.totalSlices}`;
   hudBottomRight.textContent = `Slice: ${state.currentSliceIndex + 1} / ${state.totalSlices}`;
 
@@ -309,7 +327,14 @@ function renderCurrentSlice() {
   const img = new Image();
   img.onload = () => {
     state.currentSliceImage = img;
+    viewerLoading.hidden = true;
     drawCanvas();
+  };
+  img.onerror = () => {
+    state.currentSliceImage = null;
+    viewerLoading.hidden = true;
+    ctx.clearRect(0, 0, dicomCanvas.width, dicomCanvas.height);
+    showToast('The selected image could not be loaded.');
   };
   img.src = url;
 }
@@ -348,20 +373,20 @@ function drawSegmentationContours(w, h) {
   ctx.save();
   ctx.globalAlpha = 0.35;
 
-  // Liver Contour (Cyan)
-  ctx.fillStyle = '#06b6d4';
+  // Liver contour
+  ctx.fillStyle = '#7893a2';
   ctx.beginPath();
   ctx.ellipse(w * 0.35, h * 0.44, w * 0.16, h * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Spleen Contour (Purple)
-  ctx.fillStyle = '#a855f7';
+  // Spleen contour
+  ctx.fillStyle = '#9ea9ad';
   ctx.beginPath();
   ctx.ellipse(w * 0.70, h * 0.48, w * 0.08, h * 0.09, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Kidneys Contours (Green)
-  ctx.fillStyle = '#10b981';
+  // Kidney contours
+  ctx.fillStyle = '#657b84';
   ctx.beginPath();
   ctx.ellipse(w * 0.36, h * 0.65, w * 0.06, h * 0.07, 0, 0, Math.PI * 2);
   ctx.ellipse(w * 0.64, h * 0.65, w * 0.06, h * 0.07, 0, 0, Math.PI * 2);
@@ -386,12 +411,12 @@ function drawBoundingBoxes(w, h) {
 
     // Label tag
     ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-    ctx.font = 'bold 12px Inter, sans-serif';
+    ctx.font = 'bold 12px system-ui, sans-serif';
     const labelText = `${b.label.toUpperCase()} (${(b.confidence * 100).toFixed(0)}%)`;
     const tw = ctx.measureText(labelText).width;
     ctx.fillRect(x, Math.max(0, y - 20), tw + 10, 20);
 
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#edf0ef';
     ctx.fillText(labelText, x + 5, Math.max(14, y - 5));
     ctx.restore();
   });
@@ -514,9 +539,9 @@ async function loadAuditHistory(studyUid) {
     }
 
     auditLogList.innerHTML = records.map(r => `
-      <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08);">
-        <b>[${r.decision.toUpperCase()}]</b> by ${r.radiologist_id} &bull; Edit: ${r.levenshtein_distance} chars (${(r.edit_ratio * 100).toFixed(1)}%)<br>
-        <span style="color: var(--text-muted); font-size: 0.65rem;">Sig: ${r.tamper_proof_signature.slice(0, 24)}... &bull; ${r.timestamp}</span>
+      <div class="audit-entry">
+        <b>[${r.decision.toUpperCase()}]</b> by ${r.radiologist_id} / Edit: ${r.levenshtein_distance} chars (${(r.edit_ratio * 100).toFixed(1)}%)<br>
+        <span class="audit-meta">Sig: ${r.tamper_proof_signature.slice(0, 24)}... / ${r.timestamp}</span>
       </div>
     `).join('');
   } catch (err) {
@@ -552,39 +577,8 @@ async function runAdversarialEvaluation() {
   } catch (err) {
     showToast(`Adversarial test error: ${err.message}`);
   } finally {
-    btnRunAdversarial.textContent = "⚡ Execute FGSM Attack & Evaluate Defense";
+    btnRunAdversarial.textContent = "Run security evaluation";
     btnRunAdversarial.disabled = false;
-  }
-}
-
-// Seed Demo Studies Trigger
-async function seedDemoStudies() {
-  btnSeedDemo.disabled = true;
-  btnSeedDemo.textContent = "Synthesizing DICOMs...";
-
-  try {
-    showToast("Synthesizing and ingesting clinical demo studies...");
-    // Trigger python generation and ingestion via fetch simulation
-    const res = await fetch('/api/v1/dicom/seed-demo', { method: 'POST' });
-    if (!res.ok) {
-      // If endpoint doesn't exist, we fallback to loading worklist directly
-      loadWorklist();
-    } else {
-      const data = await res.json();
-      showToast(data.message);
-      setTimeout(loadWorklist, 1000);
-    }
-  } catch (err) {
-    // If backend doesn't have seed-demo endpoint, we provide it in routes_dicom
-    loadWorklist();
-  } finally {
-    btnSeedDemo.disabled = false;
-    btnSeedDemo.innerHTML = `
-      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-      </svg>
-      Seed Demo Studies
-    `;
   }
 }
 
@@ -606,6 +600,7 @@ async function handleFileUpload(e) {
       method: 'POST',
       body: formData
     });
+    if (!res.ok) throw new Error(`Upload request failed (${res.status})`);
     const data = await res.json();
     showToast(data.message);
     setTimeout(loadWorklist, 1500);

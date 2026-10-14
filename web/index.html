@@ -4,9 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ClinAI PACS - Medical Image Diagnosis & Triage Orchestrator</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -14,38 +11,28 @@
     <!-- Top Global Header -->
     <header class="app-header">
       <div class="brand">
-        <div class="brand-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-          </svg>
-        </div>
+        <div class="brand-mark" aria-hidden="true">CI</div>
         <div class="brand-text">
           <h1>ClinAI Orchestrator</h1>
-          <span class="sub-brand">AI-Based Medical Image Diagnosis & Triage Platform</span>
+          <span class="sub-brand">Clinical imaging review workspace</span>
         </div>
       </div>
 
       <div class="header-status">
-        <div class="badge-group">
-          <span class="status-pill status-fda" title="FDA SaMD Good Machine Learning Practice Principle 8 Compliant">
-            <span class="dot pulse-green"></span> FDA SaMD GMLP
+        <div class="status-strip">
+          <span class="status-item" title="FDA SaMD Good Machine Learning Practice Principle 8 Compliant">
+            <span class="dot pulse-green"></span> Human review required
           </span>
-          <span class="status-pill status-hipaa" title="DICOM PS 3.15 Annex E Application Level Confidentiality Profile">
-            <span class="dot pulse-blue"></span> DICOM PS 3.15 De-ID
+          <span class="status-item" title="DICOM PS 3.15 Annex E Application Level Confidentiality Profile">
+            <span class="dot pulse-blue"></span> DICOM de-identification
           </span>
-          <span class="status-pill status-accel" id="accelBadge">
-            <span class="dot pulse-purple"></span> Acceleration: MPS
+          <span class="status-item" id="accelBadge">
+            <span class="dot pulse-blue"></span> Acceleration: MPS
           </span>
         </div>
 
         <div class="header-actions">
-          <button id="btnSeedDemo" class="btn btn-primary" title="Synthesize and ingest 3 clinical demo studies">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-            </svg>
-            Seed Demo Studies
-          </button>
-          <label class="btn btn-secondary file-upload-btn" title="Upload DICOM study (.dcm)">
+          <label class="btn btn-primary file-upload-btn" title="Upload DICOM study (.dcm)">
             <input type="file" id="dicomFileInput" multiple accept=".dcm">
             <span>Upload DICOM</span>
           </label>
@@ -60,9 +47,7 @@
         <div class="panel-header">
           <div class="worklist-title-row">
             <h2>Clinical Triage Worklist</h2>
-            <button id="btnRefreshWorklist" class="btn-icon-only" title="Refresh Worklist">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </button>
+            <button id="btnRefreshWorklist" class="btn-text" title="Refresh worklist">Refresh</button>
           </div>
           <div class="triage-metrics-bar">
             <div class="metric-chip stat-chip" id="chipStatCount">STAT: 0</div>
@@ -77,11 +62,14 @@
         </div>
 
         <div class="worklist-container" id="worklistContainer">
-          <div class="empty-state">Loading clinical studies...</div>
+          <div class="loading-state" aria-live="polite" aria-label="Loading clinical studies">
+            <div class="skeleton-row"><span class="skeleton-block short"></span><span class="skeleton-block"></span></div>
+            <div class="skeleton-row"><span class="skeleton-block medium"></span><span class="skeleton-block"></span></div>
+            <div class="skeleton-row"><span class="skeleton-block short"></span><span class="skeleton-block"></span></div>
+          </div>
         </div>
       </aside>
 
-      <!-- Center Panel: Interactive PACS DICOM Viewer -->
       <main class="panel viewer-panel">
         <div class="viewer-toolbar">
           <div class="study-meta-brief" id="studyMetaBrief">
@@ -117,6 +105,7 @@
 
         <div class="viewport-canvas-wrapper" id="viewportWrapper">
           <canvas id="dicomCanvas"></canvas>
+          <div id="viewerLoading" class="viewer-loading" hidden>Loading image</div>
           <div id="viewportOverlayHud" class="viewport-hud">
             <div class="hud-tl" id="hudTopLeft">DICOM PS 3.15 Sanitized</div>
             <div class="hud-tr" id="hudTopRight">MONAI SwinUNETR</div>
@@ -133,7 +122,7 @@
 
         <!-- 3D Organ Volumetric Measurement Strip -->
         <div class="organ-metrics-strip" id="organMetricsStrip">
-          <span class="strip-title">SwinUNETR Multi-Organ Volumetrics:</span>
+          <span class="strip-title">Organ volume measurements</span>
           <div class="organ-chips-container" id="organChipsContainer">
             <span class="empty-chips">Select a 3D study to inspect segmented organ volumes</span>
           </div>
@@ -143,9 +132,9 @@
       <!-- Right Panel: AI Reporting & FDA GMLP Oversight Cockpit -->
       <aside class="panel reporting-panel">
         <div class="tabs-header">
-          <button class="tab-nav active" data-tab="tab-report">AI Radiology Draft</button>
-          <button class="tab-nav" data-tab="tab-gmlp">FDA GMLP Review</button>
-          <button class="tab-nav" data-tab="tab-security">Adversarial Defense</button>
+          <button class="tab-nav active" data-tab="tab-report">Draft report</button>
+          <button class="tab-nav" data-tab="tab-gmlp">Review</button>
+          <button class="tab-nav" data-tab="tab-security">Security</button>
         </div>
 
         <!-- Tab 1: AI Report & Hallucination Mitigation -->
@@ -164,7 +153,7 @@
 
           <div class="report-section">
             <div class="section-title">
-              <h3>Findings (Interactive Hallucination Audit)</h3>
+              <h3>Findings (Token risk audit)</h3>
               <span class="legend-pill">
                 <span class="dot-sm green"></span> Grounded
                 <span class="dot-sm amber"></span> Moderate
@@ -185,7 +174,7 @@
 
           <!-- Hallucination Mitigation Summary -->
           <div class="hallucination-card" id="hallucinationSummaryCard">
-            <h4>Hallucination Guard Telemetry</h4>
+            <h4>Report quality checks</h4>
             <div class="hallucination-grid">
               <div class="h-stat">
                 <span class="h-label">ReXTrust Mean Entropy</span>
@@ -211,10 +200,9 @@
         <div class="tab-content" id="tab-gmlp">
           <div class="gmlp-card">
             <div class="gmlp-header">
-              <span class="gmlp-icon">⚖️</span>
               <div>
-                <h4>FDA SaMD Principle 8: Human-in-the-Loop</h4>
-                <p>Verify or modify AI-generated report before electronic PACS signing.</p>
+                <h4>Radiologist sign-off</h4>
+                <p>Verify or modify the draft before electronic signing.</p>
               </div>
             </div>
 
@@ -235,13 +223,13 @@
 
             <div class="gmlp-actions">
               <button id="btnAcceptReport" class="btn btn-success">
-                ✓ Accept AI Draft
+                Accept draft
               </button>
               <button id="btnModifyReport" class="btn btn-warning">
-                ✎ Sign Modified Report
+                Sign modified report
               </button>
               <button id="btnRejectReport" class="btn btn-danger">
-                ✗ Reject Finding
+                Reject finding
               </button>
             </div>
 
@@ -255,8 +243,8 @@
         <!-- Tab 3: Adversarial Cybersecurity Defenses -->
         <div class="tab-content" id="tab-security">
           <div class="security-card">
-            <h4>Adversarial Gradient Attack & Squeezing Testbed</h4>
-            <p>Inject white-box FGSM gradient perturbations ($x_{adv} = x + \epsilon \cdot \text{sign}(\nabla_x J)$) and evaluate Feature Squeezing & Spatial Gaussian defense.</p>
+            <h4>Model security evaluation</h4>
+            <p>Run a controlled perturbation test against the selected study and review the measured defense response.</p>
 
             <div class="form-group">
               <label>Perturbation Epsilon ($\epsilon$): <span id="epsVal">0.05</span></label>
@@ -264,7 +252,7 @@
             </div>
 
             <button id="btnRunAdversarial" class="btn btn-accent">
-              ⚡ Execute FGSM Attack & Evaluate Defense
+              Run security evaluation
             </button>
 
             <div class="adversarial-results-box" id="advResultsBox" style="display: none;">
@@ -289,6 +277,14 @@
         </div>
       </aside>
     </div>
+
+    <footer class="app-footer">
+      <span>Clinical workspace. Radiologist review remains required.</span>
+      <nav aria-label="Legal">
+        <a href="/static/terms.html">Terms of Service</a>
+        <a href="/static/privacy.html">Privacy Policy</a>
+      </nav>
+    </footer>
   </div>
 
   <div id="toastNotification" class="toast"></div>
